@@ -1,0 +1,85 @@
+import os
+import time
+import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+
+# CONFIG
+START_ID = 263100
+END_ID = 263110  # Adjust as needed
+MAX_WORKERS = 35
+OUTPUT_DIR = "screenshots"
+CSV_FILE = "event_data.csv"
+BASE_URL = "https://www.newtown-ct.gov/parks-recreation/events/"
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Setup CSV
+csv_fields = ['URL', 'Title', 'Event Date']
+csv_rows = []
+
+# Create headless Chrome driver
+def create_driver():
+    options = Options()
+    options.headless = True
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+    return webdriver.Chrome(options=options)
+
+# Scrape function
+def scrape_event(event_id):
+    url = f"{BASE_URL}{event_id}"
+    try:
+        driver = create_driver()
+        driver.set_window_size(1200, 800)
+        driver.get(url)
+        time.sleep(3)
+
+        # Get HTML
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+
+        title = soup.title.string.strip() if soup.title else "No title"
+
+        # Filter out invalid or generic pages
+        if any(x in title.lower() for x in ['page not found', 'access denied']):
+            print(f"[-] Skipping {url} | {title}")
+            driver.quit()
+            return
+
+        # Try to extract event date
+        date = ""
+        date_elem = soup.select_one('.field--name-field-date')  # Common Drupal class
+        if date_elem:
+            date = date_elem.get_text(strip=True)
+
+        # Save screenshot
+        screenshot_path = os.path.join(OUTPUT_DIR, f"{event_id}.png")
+        driver.save_screenshot(screenshot_path)
+        driver.quit()
+
+        # Save data to CSV row
+        print(f"[+] Found: {url} | {title} | {date}")
+        return [url, title, date]
+
+    except Exception as e:
+        print(f"[!] Error with {url}: {e}")
+        return
+
+# Run scraper concurrently
+with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    futures = [executor.submit(scrape_event, i) for i in range(START_ID, END_ID)]
+    for future in as_completed(futures):
+        row = future.result()
+        if row:
+            csv_rows.append(row)
+
+# Save CSV
+with open(CSV_FILE, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(csv_fields)
+    writer.writerows(csv_rows)
+
+print(f"\n✅ Done! Saved {len(csv_rows)} valid events to {CSV_FILE}")

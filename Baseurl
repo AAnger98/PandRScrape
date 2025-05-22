@@ -1,0 +1,45 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+import time
+from urllib.parse import urljoin
+
+# Set up headless Chrome
+options = Options()
+options.headless = True
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0")
+
+# Path to your local ChromeDriver
+driver = webdriver.Chrome(options=options)
+
+# Visit the target page
+url = "https://www.newtown-ct.gov/parks-recreation/"
+driver.get(url)
+
+# Wait for the page to render
+time.sleep(5)  # adjust as needed for slower loads
+
+# Parse with BeautifulSoup
+soup = BeautifulSoup(driver.page_source, "html.parser")
+
+# Find and collect valid internal links
+base_url = "https://www.newtown-ct.gov"
+links = set()
+for a in soup.find_all("a", href=True):
+    href = a["href"]
+    full_url = urljoin(base_url, href)
+    if "/parks-recreation/" in full_url and full_url.startswith("https://www.newtown-ct.gov"):
+        links.add(full_url)
+
+driver.quit()
+
+# Print all results
+print(f"Found {len(links)} links:")
+for link in sorted(links):
+    print(link)
+    
+print("Status Code:", response.status_code)
+print(response.text[:1000])  # preview first 1000 characters of HTML
+
+print("Operation completed successfully.")
