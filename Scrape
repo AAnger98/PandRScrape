@@ -7,20 +7,18 @@ from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 
 # CONFIG
-START_ID = 263100
-END_ID = 263110  # Adjust as needed
-MAX_WORKERS = 35
+START_ID = 260000
+END_ID = 270000
+MAX_WORKERS = 5
 OUTPUT_DIR = "screenshots"
 CSV_FILE = "event_data.csv"
 BASE_URL = "https://www.newtown-ct.gov/parks-recreation/events/"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Setup CSV
-csv_fields = ['URL', 'Title', 'Event Date']
+csv_fields = ['URL', 'Event Title', 'Event Date']
 csv_rows = []
 
-# Create headless Chrome driver
 def create_driver():
     options = Options()
     options.headless = True
@@ -28,7 +26,6 @@ def create_driver():
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
     return webdriver.Chrome(options=options)
 
-# Scrape function
 def scrape_event(event_id):
     url = f"{BASE_URL}{event_id}"
     try:
@@ -37,21 +34,22 @@ def scrape_event(event_id):
         driver.get(url)
         time.sleep(3)
 
-        # Get HTML
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
 
-        title = soup.title.string.strip() if soup.title else "No title"
+        # Use actual page header (not <title>) as the event name
+        h1 = soup.select_one('h1.page-title')
+        event_title = h1.get_text(strip=True) if h1 else ""
 
-        # Filter out invalid or generic pages
-        if any(x in title.lower() for x in ['page not found', 'access denied']):
-            print(f"[-] Skipping {url} | {title}")
+        # If there's no title or it's generic, skip it
+        if not event_title or event_title.lower() in ["address unknown", "newtownct"]:
+            print(f"[-] Skipping {url} | Invalid content")
             driver.quit()
             return
 
-        # Try to extract event date
+        # Try to extract a date if available
         date = ""
-        date_elem = soup.select_one('.field--name-field-date')  # Common Drupal class
+        date_elem = soup.select_one('.field--name-field-date')
         if date_elem:
             date = date_elem.get_text(strip=True)
 
@@ -60,15 +58,14 @@ def scrape_event(event_id):
         driver.save_screenshot(screenshot_path)
         driver.quit()
 
-        # Save data to CSV row
-        print(f"[+] Found: {url} | {title} | {date}")
-        return [url, title, date]
+        print(f"[+] Found: {url} | {event_title} | {date}")
+        return [url, event_title, date]
 
     except Exception as e:
         print(f"[!] Error with {url}: {e}")
         return
 
-# Run scraper concurrently
+# Run concurrently
 with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
     futures = [executor.submit(scrape_event, i) for i in range(START_ID, END_ID)]
     for future in as_completed(futures):
